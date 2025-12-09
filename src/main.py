@@ -22,7 +22,7 @@ try:
     from parameters.gliatransmitter_params import GLIATRANSMITTER_PARAMS
     from parameters.post_synaptic_params import POST_SYNAPTIC_PARAMS
     from parameters.post_synaptic_ca_params import POST_SYNAPTIC_CA_PARAMS
-    from parameters.camkii_params import CAMKII_PARAMS
+    from parameters.camkii_params import CAMKII_PARAMS  # [YENİ]
 
     # MODELLER
     from models.hh import PresynapticHH
@@ -32,7 +32,7 @@ try:
     from models.gliatransmitter import GliatransmitterDynamics
     from models.post_synaptic import PostSynapticDynamics
     from models.post_synaptic_ca import PostSynapticCalciumDynamics
-    from models.camkii import CaMKIIDynamics
+    from models.camkii import CaMKIIDynamics            # [YENİ]
 
 except ImportError as e:
     print(f"Kritik Hata: Modüller yüklenemedi. 'src' yapısını kontrol et.\n{e}")
@@ -40,18 +40,18 @@ except ImportError as e:
 
 def run():
     print("======================================================================")
-    print("     TEWARI & MAJUMDAR (2012) – TRIPARTITE SYNAPSE LTP SIMULATION")
+    print("     TEWARI & MAJUMDAR (2012) – TRIPARTITE SYNAPSE & LTP FINAL")
     print("======================================================================")
 
     # ---------------------------------------------------------------------
     # 2. SİMÜLASYON ZAMANI
     # ---------------------------------------------------------------------
-    T_total = 10000.0  # ms
-    dt = 0.01          # ms
+    T_total = 30000.0  # 30 Saniye
+    dt = 0.05          # 0.05 ms
     steps = int(T_total / dt)
     time_array = np.linspace(0, T_total, steps)
 
-    print(f"Toplam Süre: {T_total} ms")
+    print(f"Toplam Süre: {T_total/1000} saniye")
     print(f"Zaman adımı: {dt} ms")
     print(f"Adım sayısı: {steps}")
     print("----------------------------------------------------------------------")
@@ -66,151 +66,180 @@ def run():
     glia_trans_model = GliatransmitterDynamics(GLIATRANSMITTER_PARAMS)
     post_neuron_model = PostSynapticDynamics(POST_SYNAPTIC_PARAMS)
     post_ca_model = PostSynapticCalciumDynamics(POST_SYNAPTIC_CA_PARAMS)
-    camkii_model = CaMKIIDynamics(CAMKII_PARAMS)
+    camkii_model = CaMKIIDynamics(CAMKII_PARAMS) # [YENİ]
 
     # ---------------------------------------------------------------------
-    # 4. VERİ KAYIT DİZİLERİ (Buffer)
+    # 4. VERİ KAYIT DİZİLERİ (Genişletilmiş)
     # ---------------------------------------------------------------------
-    rec_V_pre = np.zeros(steps, dtype=np.float32)
-    rec_Ca_Total_Pre = np.zeros(steps, dtype=np.float32)
-    rec_Ca_Fast = np.zeros(steps, dtype=np.float32)
-    rec_Ca_Slow = np.zeros(steps, dtype=np.float32)
-    rec_Ca_ER = np.zeros(steps, dtype=np.float32)
-    rec_IP3_Pre = np.zeros(steps, dtype=np.float32)
-    rec_Glu_Syn = np.zeros(steps, dtype=np.float32)
-    rec_Ca_Astro = np.zeros(steps, dtype=np.float32)
-    rec_IP3_Astro = np.zeros(steps, dtype=np.float32)
-    rec_Glu_Extra = np.zeros(steps, dtype=np.float32)
-    rec_V_post = np.zeros(steps, dtype=np.float32)
-    rec_Ca_Post = np.zeros(steps, dtype=np.float32)
-    rec_CaMKII_P = np.zeros(steps, dtype=np.float32)
-    rec_Alpha_Mod = np.zeros(steps, dtype=np.float32)
+    rec_step = 20  # Her 20 adımda bir kayıt (Downsampling)
+    rec_size = steps // rec_step
+    rec_time = time_array[::rec_step]
+
+    # --- PRE-SYNAPTIC ---
+    rec_V_pre = np.zeros(rec_size, dtype=np.float32)
+    rec_Ca_Fast = np.zeros(rec_size, dtype=np.float32)
+    rec_Ca_Slow = np.zeros(rec_size, dtype=np.float32)
+    rec_Ca_ER = np.zeros(rec_size, dtype=np.float32)
+    rec_IP3_Pre = np.zeros(rec_size, dtype=np.float32)
+    rec_Glu_Syn = np.zeros(rec_size, dtype=np.float32)
+
+    # --- ASTROCYTE ---
+    rec_Ca_Astro = np.zeros(rec_size, dtype=np.float32)
+    rec_IP3_Astro = np.zeros(rec_size, dtype=np.float32)
+    rec_h_Gate = np.zeros(rec_size, dtype=np.float32)
+    rec_Glu_Extra = np.zeros(rec_size, dtype=np.float32)
+
+    # --- POST-SYNAPTIC ---
+    rec_V_post = np.zeros(rec_size, dtype=np.float32)
+    rec_Ca_Post = np.zeros(rec_size, dtype=np.float32)
+    rec_I_AMPA = np.zeros(rec_size, dtype=np.float32)
+
+    # --- LTP / CaMKII [YENİ] ---
+    rec_CaMKII_P = np.zeros(rec_size, dtype=np.float32) # Toplam Fosforile
+    rec_Alpha_Mod = np.zeros(rec_size, dtype=np.float32) # Değişen Alpha Değeri
 
     # ---------------------------------------------------------------------
-    # 5. BAŞLANGIÇ DEĞERLERİ
+    # 5. SİMÜLASYON DÖNGÜSÜ
     # ---------------------------------------------------------------------
-    current_glu_syn = 0.0
-    current_glu_extra = 0.0
-    base_alpha = GLUTAMATE_PARAMS["alpha"]
+    current_glu_syn = 0.0   # uM
+    current_glu_extra = 0.0 # uM
+    
+    # Orijinal Alpha değerini sakla (Referans)
+    base_alpha = GLUTAMATE_PARAMS['alpha']
+    current_alpha = base_alpha
 
     start_time = time.time()
 
-    # ---------------------------------------------------------------------
-    # 6. SİMÜLASYON DÖNGÜSÜ
-    # ---------------------------------------------------------------------
     for i in range(steps):
-
         t_ms = time_array[i]
         dt_sec = dt * 1e-3
 
-        # (1) PRESYNAPTIC HH VOLTAJ
-        V_pre_mV = hh_model.step(dt, t_ms)
+        # A. UYARI (HFS - 10-20 sn arası)
+        if 10000 <= t_ms <= 20000:
+            I_stim = 10.0 
+        else:
+            I_stim = 0.0
+
+        # B. PRE-SINAPTIK
+        V_pre_mV = hh_model.step(dt, t_ms, I_stim)
         V_pre_volts = V_pre_mV * 1e-3
 
-        # (2) PRESYNAPTIC Ca2+ (IP3 DÖNGÜSÜ)
-        # glu=current_glu_extra -> Astrositten gelen glutamat IP3 üretimini tetikler.
-        Ca_pre = ca_pre_model.step(dt_sec, V_pre_volts, glu=current_glu_extra)
+        # Feedback: Glu_extra (uM -> Molar)
+        Ca_pre = ca_pre_model.step(dt_sec, V_pre_volts, glu=current_glu_extra * 1e-6)
+        
+        # Ca_pre uM kullanımı
+        Ca_pre_uM = ca_pre_model.c_fast * 1e6
+        
+        # [MODÜLASYON] Alpha değerini LTP'ye göre güncelle
+        glu_pre_model.p['alpha'] = current_alpha
+        current_glu_syn = glu_pre_model.step(dt, Ca_pre_uM)
 
-        # (3) PRESYNAPTIC GLUTAMATE RELEASE
-        # Çıktı birimi: uM
-        current_glu_syn = glu_pre_model.step(dt_sec, Ca_pre)
-
-        # (4) ASTROCYTE Ca2+ + IP3 [KRİTİK DÜZELTME BURADA]
-        # Astrocyte Molar bekliyor, Glutamate uM geliyor.
-        # uM -> Molar çevrimi için 1e-6 ile çarpıyoruz.
+        # C. ASTROCYTE
         Ca_astro = astro_model.compute_derivatives(dt_sec, current_glu_syn * 1e-6)
+        current_glu_extra = glia_trans_model.step(dt, Ca_astro * 1e6)
 
-        # (5) GLIOTRANSMITTER FEEDBACK
-        # Gliatransmitter muhtemelen uM bazlı çalışıyor.
-        # Ca_astro (Molar) -> uM çevirip veriyoruz (1e6)
-        current_glu_extra = glia_trans_model.step(dt_sec, Ca_astro * 1e6)
-
-        # (6) POSTSYNAPTIC – I_soma pulse
-        if 100 < t_ms < 120:
-            I_soma = 0.5e-9   # 20 ms external stimulation
-        else:
-            I_soma = 0.0
-
-        V_post_volts = post_neuron_model.step(dt_sec, current_glu_syn, I_soma)
-
-        # (7) POST-SYNAPTIC Ca2+
+        # D. POST-SINAPTIK
+        V_post_volts = post_neuron_model.step(dt_sec, current_glu_syn, I_soma_injected=0.0)
         I_AMPA = post_neuron_model.I_AMPA
         Ca_post = post_ca_model.step(dt_sec, V_post_volts, I_AMPA)
 
-        # (8) CaMKII (P0-P10)
+        # E. CaMKII & RETROGRADE SIGNALING [YENİ]
+        # 1. CaMKII'yi güncelle (Girdi: Molar Ca_post)
+        # Ca_post zaten Molar dönüyor.
         camkii_model.step(dt_sec, Ca_post)
 
-        # Retrograde modulation
-        alpha_mod = camkii_model.get_alpha_modulation()
-        glu_pre_model.p["alpha"] = base_alpha * (1.0 + alpha_mod)
+        # 2. NO Modülasyonunu hesapla (0.0 ile k_syt arasında bir değer döner)
+        alpha_mod_factor = camkii_model.get_alpha_modulation()
+
+        # 3. Alpha parametresini güncelle (Retrograde Feedback)
+        # alpha = alpha_base * (1 + modulation)
+        current_alpha = base_alpha * (1.0 + alpha_mod_factor)
 
         # -------------------------
-        # KAYIT (DOĞRU BİRİMLER)
+        # KAYIT (Downsampling)
         # -------------------------
-        rec_V_pre[i] = V_pre_mV
-        
-        # Ca_pre zaten uM dönüyor
-        rec_Ca_Total_Pre[i] = Ca_pre  
-        
-        # State'ler Molar -> uM
-        rec_Ca_Fast[i] = ca_pre_model.c_fast * 1e6
-        rec_Ca_Slow[i] = ca_pre_model.c_slow * 1e6
-        rec_Ca_ER[i] = ca_pre_model.c_ER * 1e6
-        rec_IP3_Pre[i] = ca_pre_model.p_ip3 * 1e6
-        
-        # Glu uM -> mM (Grafik için)
-        rec_Glu_Syn[i] = current_glu_syn * 1e-3
-        
-        # Astrocyte State Molar -> uM
-        rec_Ca_Astro[i] = Ca_astro * 1e6
-        rec_IP3_Astro[i] = astro_model.p_a * 1e6
-        
-        rec_Glu_Extra[i] = current_glu_extra * 1e-3
-        
-        rec_V_post[i] = V_post_volts * 1e3
-        rec_Ca_Post[i] = Ca_post * 1e6
-        rec_CaMKII_P[i] = np.sum(camkii_model.P[1:]) * 1e6
-        rec_Alpha_Mod[i] = glu_pre_model.p["alpha"]
+        if i % rec_step == 0:
+            idx = i // rec_step
+            
+            # Pre
+            rec_V_pre[idx] = V_pre_mV
+            rec_Ca_Fast[idx] = ca_pre_model.c_fast * 1e6 
+            rec_Ca_Slow[idx] = ca_pre_model.c_slow * 1e6 
+            rec_Ca_ER[idx] = ca_pre_model.c_ER * 1e6     
+            rec_IP3_Pre[idx] = ca_pre_model.p_ip3 * 1e6  
+            rec_Glu_Syn[idx] = current_glu_syn
+            
+            # Astro
+            rec_Ca_Astro[idx] = Ca_astro * 1e6           
+            rec_IP3_Astro[idx] = astro_model.p_a * 1e6   
+            rec_h_Gate[idx] = astro_model.h_a            
+            rec_Glu_Extra[idx] = current_glu_extra
+            
+            # Post
+            rec_V_post[idx] = V_post_volts * 1e3         
+            rec_Ca_Post[idx] = Ca_post * 1e6             
+            rec_I_AMPA[idx] = I_AMPA * 1e9               
 
-        # İLERLEME ÇUBUĞU
-        if i % (steps // 20) == 0:
+            # LTP [YENİ]
+            # P[1:] tüm fosforile alt birimlerin toplamı
+            rec_CaMKII_P[idx] = np.sum(camkii_model.P[1:]) * CAMKII_PARAMS["e_k"] * 1e6
+            rec_Alpha_Mod[idx] = current_alpha
+
+        # İLERLEME
+        if i % (steps // 10) == 0:
             percent = (i / steps) * 100
             elapsed = time.time() - start_time
-            print(f"%{percent:.0f} tamamlandı. Geçen süre: {elapsed:.1f} sn")
+            print(f"%{percent:.0f} tamamlandı. ({t_ms:.0f} ms)")
 
-    print(f"\nSimülasyon tamamlandı. Süre: {time.time() - start_time:.2f} sn")
-    print("Grafikler hazırlanıyor...")
+    print(f"\nSimülasyon Bitti. Süre: {time.time() - start_time:.2f} sn")
+    print("Grafikler oluşturuluyor...")
 
     # ---------------------------------------------------------------------
-    # 7. GRAFİKLER
+    # 6. GÖRSELLEŞTİRME (4 AYRI FİGÜR)
     # ---------------------------------------------------------------------
+    t_axis = rec_time / 1000 # Saniye
 
-    # --- PRE-SYNAPTIC ---
-    fig1, ax1 = plt.subplots(4, 1, figsize=(10, 12), sharex=True)
-    fig1.suptitle("1. Pre-Sinaptik Dinamikler", fontsize=14)
-    ax1[0].plot(time_array, rec_V_pre); ax1[0].set_ylabel("V_pre (mV)")
-    ax1[1].plot(time_array, rec_Ca_Fast, label="Ca_fast")
-    ax1[1].plot(time_array, rec_Ca_Slow, label="Ca_slow")
-    ax1[1].legend(); ax1[1].set_ylabel("[Ca] (uM)")
-    ax1[2].plot(time_array, rec_Ca_ER); ax1[2].set_ylabel("Ca_ER (uM)")
-    ax1[3].plot(time_array, rec_IP3_Pre); ax1[3].set_ylabel("IP3 (uM)"); ax1[3].set_xlabel("Time (ms)")
+    # --- FIG 1: PRE-SINAPTIK BÖLÜM ---
+    fig1, ax1 = plt.subplots(5, 1, figsize=(10, 14), sharex=True)
+    fig1.suptitle("1. Pre-Synaptic Dynamics", fontsize=14)
+    ax1[0].plot(t_axis, rec_V_pre, 'k', lw=0.5); ax1[0].set_ylabel("V_pre (mV)"); ax1[0].set_title("Action Potentials")
+    ax1[1].plot(t_axis, rec_Ca_Fast, 'b', label="Ca_fast"); ax1[1].plot(t_axis, rec_Ca_Slow, 'orange', label="Ca_slow")
+    ax1[1].set_ylabel("Ca (uM)"); ax1[1].legend(loc="upper right"); ax1[1].set_title("Cytosolic Calcium")
+    ax1[2].plot(t_axis, rec_Ca_ER, 'purple'); ax1[2].set_ylabel("Ca_ER (uM)"); ax1[2].set_title("ER Calcium Store")
+    ax1[3].plot(t_axis, rec_IP3_Pre, 'brown'); ax1[3].set_ylabel("IP3 (uM)"); ax1[3].set_title("Presynaptic IP3")
+    ax1[4].plot(t_axis, rec_Glu_Syn, 'g', lw=0.8); ax1[4].set_ylabel("Glu (uM)"); ax1[4].set_title("Glutamate Release"); ax1[4].set_xlabel("Time (s)")
+    plt.tight_layout()
 
-    # --- ASTROCYTE ---
+    # --- FIG 2: ASTROCYTE BÖLÜMÜ ---
     fig2, ax2 = plt.subplots(4, 1, figsize=(10, 12), sharex=True)
-    fig2.suptitle("2. Astrosit & Feedback", fontsize=14)
-    ax2[0].plot(time_array, rec_Glu_Syn); ax2[0].set_ylabel("Glu_syn (mM)")
-    ax2[1].plot(time_array, rec_IP3_Astro); ax2[1].set_ylabel("IP3_astro (uM)")
-    ax2[2].plot(time_array, rec_Ca_Astro); ax2[2].set_ylabel("Ca_astro (uM)")
-    ax2[3].plot(time_array, rec_Glu_Extra); ax2[3].set_ylabel("Glu_extra (mM)"); ax2[3].set_xlabel("Time (ms)")
+    fig2.suptitle("2. Astrocyte Dynamics", fontsize=14)
+    ax2[0].plot(t_axis, rec_Ca_Astro, 'r', lw=1.5); ax2[0].set_ylabel("Ca_astro (uM)"); ax2[0].set_title("Calcium Oscillations")
+    ax2[1].plot(t_axis, rec_IP3_Astro, 'm'); ax2[1].set_ylabel("IP3 (uM)"); ax2[1].set_title("IP3 Dynamics")
+    ax2[2].plot(t_axis, rec_h_Gate, 'gray'); ax2[2].set_ylabel("h gate"); ax2[2].set_ylim(0, 1); ax2[2].set_title("IP3 Receptor Gating (h)")
+    ax2[3].plot(t_axis, rec_Glu_Extra, 'purple', lw=1); ax2[3].set_ylabel("Glu_extra (uM)"); ax2[3].set_title("Gliotransmitter Release"); ax2[3].set_xlabel("Time (s)")
+    plt.tight_layout()
 
-    # --- POST-SYNAPTIC & CaMKII ---
-    fig3, ax3 = plt.subplots(4, 1, figsize=(10, 12), sharex=True)
-    fig3.suptitle("3. Post-Sinaptik ve CaMKII / LTP", fontsize=14)
-    ax3[0].plot(time_array, rec_V_post); ax3[0].set_ylabel("V_post (mV)")
-    ax3[1].plot(time_array, rec_Ca_Post); ax3[1].set_ylabel("Ca_post (uM)")
-    ax3[2].plot(time_array, rec_CaMKII_P); ax3[2].set_ylabel("CaMKII-P (uM)")
-    ax3[3].plot(time_array, rec_Alpha_Mod); ax3[3].set_ylabel("alpha (mod)"); ax3[3].set_xlabel("Time (ms)")
+    # --- FIG 3: POST-SINAPTIK BÖLÜM ---
+    fig3, ax3 = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
+    fig3.suptitle("3. Post-Synaptic Dynamics", fontsize=14)
+    ax3[0].plot(t_axis, rec_V_post, 'b', lw=0.8); ax3[0].set_ylabel("V_post (mV)"); ax3[0].set_title("Membrane Potential")
+    ax3[1].plot(t_axis, rec_Ca_Post, 'orange'); ax3[1].set_ylabel("Ca_post (uM)"); ax3[1].set_title("Spine Calcium Concentration")
+    ax3[2].plot(t_axis, rec_I_AMPA, 'cyan', lw=0.8); ax3[2].set_ylabel("I_AMPA (nA)"); ax3[2].set_title("AMPA Receptor Current"); ax3[2].set_xlabel("Time (s)")
+    plt.tight_layout()
 
+    # --- FIG 4: RETROGRADE SIGNALING (LTP) [YENİ] ---
+    fig4, ax4 = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+    fig4.suptitle("4. Retrograde Signaling (LTP & NO)", fontsize=14)
+    
+    ax4[0].plot(t_axis, rec_CaMKII_P, 'm', lw=1.5)
+    ax4[0].set_ylabel("CaMKII-P (uM)")
+    ax4[0].set_title("Phosphorylated CaMKII (Memory Molecule)")
+    
+    ax4[1].plot(t_axis, rec_Alpha_Mod, 'k', lw=1.5)
+    ax4[1].set_ylabel("Alpha (Pre-Synaptic)")
+    ax4[1].set_title("Vesicle Release Probability Modulation (LTP)")
+    ax4[1].set_xlabel("Time (s)")
+    
     plt.tight_layout()
     plt.show()
 
