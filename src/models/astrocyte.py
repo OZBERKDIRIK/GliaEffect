@@ -6,6 +6,7 @@ class AstrocyteDynamics:
     Implements Equations 10, 11, 12 from the paper.
     
     UNITS: Internal calculations are strictly in SI (Molar, Seconds).
+    Input 'g_syn_molar' must be in Molar!
     """
 
     def __init__(self, params):
@@ -18,12 +19,8 @@ class AstrocyteDynamics:
 
     def hill(self, x, K, n):
         """
-        Generic Hill function based on Denklem4.png:
-        Hill(x^n, K) = x^n / (x^n + K^n)
-        
-        Note: The image defines 'K' as the term in denominator x^n + K. 
-        Usually K is K_half. If K in table is K_half, then denominator is x^n + K_half^n.
-        Based on standard De Pitta implementation, we use: x^n / (x^n + K^n).
+        Generic Hill function: x^n / (x^n + K^n)
+        Safe against negative x and division by zero.
         """
         x = max(x, 0.0)
         xn = x ** n
@@ -43,6 +40,12 @@ class AstrocyteDynamics:
         h_a = self.h_a
 
         # ---------------------------------------------------------------------
+        # 0. Parametre Güvenliği (c1 vs c1_a karmaşasını önlemek için)
+        # ---------------------------------------------------------------------
+        # Eğer sözlükte 'c1_a' yoksa 'c1' kullan, o da yoksa varsayılan 0.185 al.
+        c1_val = p.get('c1_a', p.get('c1', 0.185))
+
+        # ---------------------------------------------------------------------
         # 1. Gating Variables (m_inf, n_inf) - Denklem 4 & 10
         # ---------------------------------------------------------------------
         # m_inf = Hill(p_a, d1) -> n=1
@@ -54,21 +57,20 @@ class AstrocyteDynamics:
         # ---------------------------------------------------------------------
         # 2. Ca2+ Dynamics (Denklem 10)
         # ---------------------------------------------------------------------
-        # Driving force
-        driving = p['c_0'] - (1.0 + p['c1_a']) * c_a
+        # Driving force (Konsantrasyon farkı: ER - Sitoplazma)
+        driving = p['c_0'] - (1.0 + c1_val) * c_a
         
         # Fluxes
+        # J_IP3R: ER'den sitoplazmaya akış (+)
         J_IP3R = p['r_c'] * (m_inf**3) * (n_inf**3) * (h_a**3) * driving
+        
+        # J_SERCA: Sitoplazmadan ER'ye pompalama (-)
         J_SERCA = p['v_ER'] * (c_a**2) / (c_a**2 + p['K_ER']**2)
+        
+        # J_Leak: ER'den sitoplazmaya sızıntı (+)
         J_Leak = p['r_L'] * driving
         
-        dc_a_dt = J_IP3R - J_SERCA + J_Leak # Denklemde işaretlere dikkat: J_IP3R ve Leak release, SERCA uptake.
-        # Denklem 10 görselinde: -r_c... - v_ER... - r_L... yazıyor AMA
-        # Parantez içindeki (c0 - ...) terimi pozitifse bu influx demektir.
-        # De Pitta modelinde sitozoldeki değişim: Release - Uptake + Leak.
-        # J_IP3R ve J_Leak (ER->Cyto) pozitiftir. J_SERCA (Cyto->ER) negatiftir.
-        # Kodumuzda J_IP3R ve J_Leak "Release Rate" olarak tanımlı, bu yüzden (+) alıyoruz.
-        # J_SERCA uptake olduğu için (-) alıyoruz.
+        # Fiziksel Denklem: Değişim = Girişler - Çıkışlar
         dc_a_dt = J_IP3R - J_SERCA + J_Leak 
 
         # ---------------------------------------------------------------------
@@ -77,8 +79,8 @@ class AstrocyteDynamics:
         
         # --- Production by PLC_beta (Glutamate Dependent) ---
         # Term: v_beta * Hill(g^0.7, K_R)
-        # Denklemde Hill(g^0.7, K_R) yazıyor. Parametre tablosunda K_R Molar.
-        # Bu yüzden Hill fonksiyonuna g^0.7 ve K_R^0.7 girmeliyiz.
+        # Not: Hill fonksiyonuna g_syn_molar veriyoruz, K_R de Molar.
+        # Fonksiyon içeride kuvvetlerini alıyor (0.7).
         prod_beta = p['v_beta'] * self.hill(g_syn_molar, p['K_R'], 0.7)
         
         # Inhibition factor: 1 + (Kp/KR)*Hill(Ca, K_pi)
@@ -89,7 +91,9 @@ class AstrocyteDynamics:
         # --- Production by PLC_delta (Ca Dependent) ---
         # Term: v_delta / (1 + p/k_delta) * Hill(c^2, K_PLC_delta)
         term_delta_1 = p['v_delta'] / (1.0 + p_a / p['k_delta'])
-        term_delta_2 = self.hill(c_a, p['K_PLC_delta'], 2.0) # c^2 / (c^2 + K^2)
+        
+        # Hill(c^2, K) -> c^2 / (c^2 + K) mantığı için n=2.0 kullanıyoruz.
+        term_delta_2 = self.hill(c_a, p['K_PLC_delta'], 2.0) 
         
         term_PLC_delta = term_delta_1 * term_delta_2
 
@@ -106,7 +110,6 @@ class AstrocyteDynamics:
         # 4. h-Gate Dynamics (Denklem 12)
         # ---------------------------------------------------------------------
         # alpha_h, beta_h
-        # alpha = a2 * d2 * (p + d1)/(p + d3)
         alpha_h = p['a2'] * p['d2'] * (p_a + p['d1']) / (p_a + p['d3'])
         beta_h  = p['a2'] * c_a
         
@@ -119,8 +122,8 @@ class AstrocyteDynamics:
         self.p_a += dt * dp_a_dt
         self.h_a += dt * dh_a_dt
         
-        # Sınırlandırmalar (Negatif olamaz)
-        self.c_a = max(self.c_a, 1e-12)
+        # Sınırlandırmalar
+        self.c_a = max(self.c_a, 1e-12) # 0 yerine çok küçük bir sayı (Nan önler)
         self.p_a = max(self.p_a, 0.0)
         self.h_a = np.clip(self.h_a, 0.0, 1.0)
 

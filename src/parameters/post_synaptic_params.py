@@ -1,6 +1,6 @@
 POST_SYNAPTIC_PARAMS = {
     "R_m": 0.7985e11,       # Ohm
-    "V_post_rest": -0.070,  # Volt
+    "V_rest": -0.070,  # Volt
     "V_target": -0.030,     # Volt (hedef potansiyel)
     "tau_post": 0.05,       # s
     "g_AMPA": 0.35e-9,      # Siemens

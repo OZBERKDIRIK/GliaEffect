@@ -2,45 +2,37 @@
 
 GLIATRANSMITTER_PARAMS = {
     # ------------------------------------------------------------
-    # Astrosit Kalsiyum Sensörü Kinetiği (Bertram et al. 1996)
-    # Tablo 6
-    # Birimler: ms -> s, uM -> M, mM -> M
+    # Astrosit Kalsiyum Sensörü Kinetiği (Table 6)
+    # UNITS: MicroMolar (uM) and Milliseconds (ms)
     # ------------------------------------------------------------
     
-    # Kademeli Bağlanma Hızları (Association Rates)
-    # k1_plus: 3.75e-3 / (uM * ms)
-    # Dönüşüm: 3.75e-3 * 1e6 (uM->M) * 1e3 (ms->s) = 3.75e6
-    "k1_plus": 3.75e6,  # 1/(M*s)
+    # Association Rates (Table 6: / (uM * ms))
+    "k1_plus": 3.75e-3,  # 3.75 x 10^-3
+    "k2_plus": 2.5e-3,   # 2.5 x 10^-3
+    "k3_plus": 1.25e-2,  # 1.25 x 10^-2
     
-    # k2_plus: 2.5e-3 / (uM * ms) -> 2.5e6
-    "k2_plus": 2.5e6,   # 1/(M*s)
-    
-    # k3_plus: 1.25e-2 / (uM * ms) -> 1.25e7
-    "k3_plus": 1.25e7,  # 1/(M*s)
-    
-    # Ayrılma Hızları (Dissociation Rates)
-    # k1_minus: 4e-4 / ms -> 0.4 / s
-    "k1_minus": 0.4,    # 1/s
-    
-    # k2_minus: 1e-3 / ms -> 1.0 / s
-    "k2_minus": 1.0,    # 1/s
-    
-    # k3_minus: 1e-3 / ms -> 1.0 / s
-    "k3_minus": 1.0,    # 1/s
+    # Dissociation Rates (Table 6: / ms)
+    "k1_minus": 4e-4,    # 4 x 10^-4
+    "k2_minus": 1e-3,    # 1 x 10^-3
+    "k3_minus": 1e-3,    # 1 x 10^-3
 
     # ------------------------------------------------------------
-    # Vezikül Döngüsü (TMM - Astrosit Versiyonu)
+    # Vesicle Cycle (Table 6)
     # ------------------------------------------------------------
-    "tau_rec_a": 0.8,     # İyileşme süresi (800 ms -> 0.8 s)
-    "tau_inac_a": 0.003,  # İnaktivasyon süresi (3 ms -> 0.003 s)
+    "tau_rec_a": 800.0,   # ms
+    "tau_inac_a": 3.0,    # ms
     
-    # Salınım Eşiği (Heaviside Fonksiyonu için)
-    "C_a_thresh": 196.69e-9, # 196.69 nM -> Molar
+    # Threshold: 196.69 nM = 0.19669 uM
+    "C_a_thresh": 0.19669, # uM
 
     # ------------------------------------------------------------
-    # Ekstra-Sinaptik Aralık Dinamikleri
+    # Extra-Synaptic Cleft Dynamics (Table 6)
     # ------------------------------------------------------------
-    "n_a_v": 12.0,       # Salınıma hazır SLMV sayısı
-    "g_a_v": 0.02,       # Vezikül içi glutamat (20 mM -> 0.02 M)
-    "g_a_c": 10000.0,    # Temizlenme hızı (10 / ms -> 10000 / s)
+    "n_a_v": 12.0,        # Number of SLMVs
+    
+    # Glutamate Concentration: 20 mM = 20000 uM
+    "g_a_v": 20000.0,     # uM
+    
+    # Clearance Rate: 10 / ms
+    "g_a_c": 10.0         # 1/ms
 }
