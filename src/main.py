@@ -1,10 +1,25 @@
-# Dosya Yolu: main.py
-
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
 import os
 import time
+
+# =================================================================================
+# KULLANICI AYARLARI (BURAYI DEĞİŞTİREREK 50HZ / 100HZ GEÇİŞİ YAPABİLİRSİN)
+# =================================================================================
+# Seçenekler: '50Hz' veya '100Hz'
+# HOCANIN İSTEĞİ ÜZERİNE ÖNCE 100HZ ALALIM, SONRA BURAYI '50Hz' YAPIP TEKRAR ÇALIŞTIR.
+SIMULATION_MODE = '100Hz' 
+
+if SIMULATION_MODE == '50Hz':
+    CURRENT_AMPLITUDE = 10.0  # uA/cm2 -> Yaklaşık 50-60 Hz ateşleme sağlar (Eşik altı/sınırda LTP)
+elif SIMULATION_MODE == '100Hz':
+    CURRENT_AMPLITUDE = 22.0  # uA/cm2 -> Yaklaşık 100 Hz ateşleme sağlar (Güçlü LTP)
+else:
+    raise ValueError("Lütfen '50Hz' veya '100Hz' seçiniz.")
+
+print(f"--- SİMÜLASYON MODU: {SIMULATION_MODE} (Akım: {CURRENT_AMPLITUDE} uA/cm2) ---")
+# =================================================================================
 
 # -------------------------------------------------------------------------
 # 1. ORTAM AYARLARI VE İMPORTLAR
@@ -40,7 +55,7 @@ except ImportError as e:
 
 def run():
     print("======================================================================")
-    print("     TEWARI & MAJUMDAR (2012) – TRIPARTITE SYNAPSE & LTP FINAL")
+    print(f"    TEWARI & MAJUMDAR (2012) – TRIPARTITE SYNAPSE & LTP ({SIMULATION_MODE})")
     print("======================================================================")
 
     # ---------------------------------------------------------------------
@@ -115,8 +130,9 @@ def run():
         dt_sec = dt * 1e-3
 
         # A. UYARI (HFS - 10-20 sn arası)
+        # BURADA CURRENT_AMPLITUDE KULLANIYORUZ (Otomatik)
         if 10000 <= t_ms <= 20000:
-            I_stim = 10.0 
+            I_stim = CURRENT_AMPLITUDE 
         else:
             I_stim = 0.0
 
@@ -192,16 +208,20 @@ def run():
             print(f"%{percent:.0f} tamamlandı. ({t_ms:.0f} ms)")
 
     print(f"\nSimülasyon Bitti. Süre: {time.time() - start_time:.2f} sn")
-    print("Grafikler oluşturuluyor...")
+    print("Grafikler oluşturuluyor ve kaydediliyor...")
 
     # ---------------------------------------------------------------------
-    # 6. GÖRSELLEŞTİRME (4 AYRI FİGÜR)
+    # 6. GÖRSELLEŞTİRME VE KAYIT (OTOMATİK DOSYALAMA)
     # ---------------------------------------------------------------------
     t_axis = rec_time / 1000 # Saniye
+    
+    # Klasör oluşturma (yoksa)
+    if not os.path.exists("results_comparison"):
+        os.makedirs("results_comparison")
 
-    # --- FIG 1: PRE-SINAPTIK BÖLÜM ---
+    # --- FIG 1: PRE-SYNAPTIC BÖLÜM ---
     fig1, ax1 = plt.subplots(5, 1, figsize=(10, 14), sharex=True)
-    fig1.suptitle("1. Pre-Synaptic Dynamics", fontsize=14)
+    fig1.suptitle(f"1. Pre-Synaptic Dynamics ({SIMULATION_MODE})", fontsize=14)
     ax1[0].plot(t_axis, rec_V_pre, 'k', lw=0.5); ax1[0].set_ylabel("V_pre (mV)"); ax1[0].set_title("Action Potentials")
     ax1[1].plot(t_axis, rec_Ca_Fast, 'b', label="Ca_fast"); ax1[1].plot(t_axis, rec_Ca_Slow, 'orange', label="Ca_slow")
     ax1[1].set_ylabel("Ca (uM)"); ax1[1].legend(loc="upper right"); ax1[1].set_title("Cytosolic Calcium")
@@ -209,27 +229,30 @@ def run():
     ax1[3].plot(t_axis, rec_IP3_Pre, 'brown'); ax1[3].set_ylabel("IP3 (uM)"); ax1[3].set_title("Presynaptic IP3")
     ax1[4].plot(t_axis, rec_Glu_Syn, 'g', lw=0.8); ax1[4].set_ylabel("Glu (uM)"); ax1[4].set_title("Glutamate Release"); ax1[4].set_xlabel("Time (s)")
     plt.tight_layout()
+    plt.savefig(f"results_comparison/Pre_{SIMULATION_MODE}.png")
 
     # --- FIG 2: ASTROCYTE BÖLÜMÜ ---
     fig2, ax2 = plt.subplots(4, 1, figsize=(10, 12), sharex=True)
-    fig2.suptitle("2. Astrocyte Dynamics", fontsize=14)
+    fig2.suptitle(f"2. Astrocyte Dynamics ({SIMULATION_MODE})", fontsize=14)
     ax2[0].plot(t_axis, rec_Ca_Astro, 'r', lw=1.5); ax2[0].set_ylabel("Ca_astro (uM)"); ax2[0].set_title("Calcium Oscillations")
     ax2[1].plot(t_axis, rec_IP3_Astro, 'm'); ax2[1].set_ylabel("IP3 (uM)"); ax2[1].set_title("IP3 Dynamics")
     ax2[2].plot(t_axis, rec_h_Gate, 'gray'); ax2[2].set_ylabel("h gate"); ax2[2].set_ylim(0, 1); ax2[2].set_title("IP3 Receptor Gating (h)")
     ax2[3].plot(t_axis, rec_Glu_Extra, 'purple', lw=1); ax2[3].set_ylabel("Glu_extra (uM)"); ax2[3].set_title("Gliotransmitter Release"); ax2[3].set_xlabel("Time (s)")
     plt.tight_layout()
+    plt.savefig(f"results_comparison/Astro_{SIMULATION_MODE}.png")
 
-    # --- FIG 3: POST-SINAPTIK BÖLÜM ---
+    # --- FIG 3: POST-SYNAPTIC BÖLÜM ---
     fig3, ax3 = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
-    fig3.suptitle("3. Post-Synaptic Dynamics", fontsize=14)
+    fig3.suptitle(f"3. Post-Synaptic Dynamics ({SIMULATION_MODE})", fontsize=14)
     ax3[0].plot(t_axis, rec_V_post, 'b', lw=0.8); ax3[0].set_ylabel("V_post (mV)"); ax3[0].set_title("Membrane Potential")
     ax3[1].plot(t_axis, rec_Ca_Post, 'orange'); ax3[1].set_ylabel("Ca_post (uM)"); ax3[1].set_title("Spine Calcium Concentration")
     ax3[2].plot(t_axis, rec_I_AMPA, 'cyan', lw=0.8); ax3[2].set_ylabel("I_AMPA (nA)"); ax3[2].set_title("AMPA Receptor Current"); ax3[2].set_xlabel("Time (s)")
     plt.tight_layout()
+    plt.savefig(f"results_comparison/Post_{SIMULATION_MODE}.png")
 
-    # --- FIG 4: RETROGRADE SIGNALING (LTP) [YENİ] ---
+    # --- FIG 4: RETROGRADE SIGNALING (LTP) ---
     fig4, ax4 = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
-    fig4.suptitle("4. Retrograde Signaling (LTP & NO)", fontsize=14)
+    fig4.suptitle(f"4. Retrograde Signaling (LTP & NO) - {SIMULATION_MODE}", fontsize=14)
     
     ax4[0].plot(t_axis, rec_CaMKII_P, 'm', lw=1.5)
     ax4[0].set_ylabel("CaMKII-P (uM)")
@@ -241,6 +264,9 @@ def run():
     ax4[1].set_xlabel("Time (s)")
     
     plt.tight_layout()
+    plt.savefig(f"results_comparison/LTP_{SIMULATION_MODE}.png")
+    
+    print(f"Tüm grafikler 'results_comparison' klasörüne başarıyla kaydedildi.")
     plt.show()
 
 if __name__ == "__main__":
