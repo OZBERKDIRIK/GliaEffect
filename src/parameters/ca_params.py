@@ -25,8 +25,7 @@ CA_PARAMS = {
     # ============================================================
     # 4. Hızlı (Fast) Dinamikler: Kanallar ve Pompalar
     # ============================================================
-    # Kanal Yoğunluğu: Tablo 3.2 / µm² -> 3.2e12 / m²
-    "rho_Ca": 3.2e12,    
+    "rho_Ca": 4.0e12,    
 
     # Kanal İletkenliği: Tablo 2.3 pS -> 2.3e-12 Siemens
     "g_Ca": 2.3e-12,     

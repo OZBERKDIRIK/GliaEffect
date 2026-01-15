@@ -22,11 +22,11 @@ PRE_SYNAPTIC_PARAMS = {
 
     # ------------------------------------------------------------
     # Dışarıdan Uygulanan Akım (Stimülasyon)
-    # Makalede: 10 uA/cm^2, 5 Hz
+    # Makalede: 10 uA/cm^2, 10 ms süre (Sayfa 4, Sec 2.1)
     # ------------------------------------------------------------
-    "I_app_amp": 10.0,   # Genlik (uA/cm^2)
+    "I_app_amp": 10.0,   # DÜZELTME: Genlik 10.0 yapıldı (Makale değeri)
     "freq": 5.0,         # Frekans (Hz)
-    "pulse_width": 5.0,  # Sinyal genişliği (ms)
+    "pulse_width": 10.0, # DÜZELTME: Süre 10.0 ms yapıldı (Tam spike için)
 
     # ------------------------------------------------------------
     # Başlangıç Değerleri (Initial Conditions)

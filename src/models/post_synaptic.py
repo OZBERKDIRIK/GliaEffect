@@ -3,7 +3,7 @@ import numpy as np
 class PostSynapticDynamics:
     """
     Tewari & Majumdar (2012) – Post-Synaptic Membrane Potential
-    Implements Equations 17, 18, 19 (Denklem2.png, Denklem3.png).
+    Implements Equations 17, 18, 19
     
     UNIT PROTOCOL: SI UNITS
     - Voltage: Volts (V)

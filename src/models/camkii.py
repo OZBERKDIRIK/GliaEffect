@@ -135,10 +135,18 @@ class CaMKIIDynamics:
     def get_alpha_modulation(self):
         p = self.p
 
-        # Total phosphorylated CaMKII (P1..P10)
-        total_P = np.sum(self.P[1:])
+        # 1. Adım: Fosforile olmuş alt birimlerin KESRİNİ topla (0.0 ile 1.0 arası bir sayı çıkar)
+        fraction_P = np.sum(self.P[1:])
 
-        exponent = -((total_P - p["P_half"]) / p["k_half"])
+        # 2. Adım: Bunu Molariteye çevir (ÇÜNKÜ P_half PARAMETRESİ MOLAR CİNSİNDEN!)
+        # Kesir * Toplam Konsantrasyon = Anlık Molar Değer
+        total_P_molar = fraction_P * p["e_k"]
+
+        # 3. Adım: Sigmoid hesabını artık Molar vs Molar olarak yapabiliriz
+        # (Eski hatan: fraction_P ile P_half'ı kıyaslıyordun, o yüzden hep tavan yapıyordu)
+        exponent = -((total_P_molar - p["P_half"]) / p["k_half"])
+        
+        # Matematiksel hata (overflow) olmasın diye sınırla
         exponent = np.clip(exponent, -50, 50)
 
         k_syt_eff = p["k_syt"] / (1.0 + np.exp(exponent))

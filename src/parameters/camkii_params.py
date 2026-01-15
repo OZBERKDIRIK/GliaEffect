@@ -7,8 +7,12 @@ CAMKII_PARAMS = {
     # ============================================================
     # 2) CaMKII AUTOPHOSPHORYLATION (Zhabotinsky 2000)
     # ============================================================
-    "K1": 0.5,             # Catalytic const. for autophosphorylation (1/s)
-    "k_h": 4.0e-6,         # Hill constant for CaM-KII activation (M)
+#    "K1": 0.5,             # Catalytic const. for autophosphorylation (1/s)
+#      "K1" : 0.05,
+      "K1" : 0.005,
+#    "k_h": 4.0e-6,         # Hill constant for CaM-KII activation (M)
+#    "k_h" : 60e-6,
+     "k_h" : 150.0e-6,
     "n_h": 3.0,            # Hill coefficient
 
     # Statistical weights w1–w9 (Zhabotinsky 2000, Fig. 3)
@@ -27,7 +31,8 @@ CAMKII_PARAMS = {
     # ============================================================
     # 3) PP1 – CaMKII dephosphorylation
     # ============================================================
-    "K2": 10.0,            # PP1 catalytic constant (1/s)
+#    "K2": 10.0,            # PP1 catalytic constant (1/s)
+    "K2" : 50.0,
     "K_M": 20e-6,          # MM constant of PP1 (M)
     "ep_0": 0.1e-6,        # Total PP1 concentration (M)
 
@@ -49,7 +54,9 @@ CAMKII_PARAMS = {
     # ============================================================
     # 5) RETROGRADE SIGNALLING (NO → presynaptic α modulation)
     # ============================================================
-    "P_half": 40e-6,       # Threshold CaMKII-P for NO production (M)
+    #"P_half": 40e-6,       # Threshold CaMKII-P for NO production (M)
+   # "P_half" : 50e-6,
+   "P_half" : 25e-6,
     "k_half": 0.4e-6,      # Slope factor (M)
     "k_syt": 0.005         # 0.5% synaptotagmin increase
 }
